@@ -258,11 +258,13 @@ if (!window.smartSearchInjected) {
                     showToast('Copy failed. Please manually drag the image or use Google Lens.', true);
                 }
                 
-                // Open Yandex regardless
-                chrome.runtime.sendMessage({
-                    action: 'open_url',
-                    url: 'https://yandex.com/images/'
-                });
+                // Open Yandex regardless after delay
+                setTimeout(() => {
+                    chrome.runtime.sendMessage({
+                        action: 'open_url',
+                        url: 'https://yandex.com/images/'
+                    });
+                }, 1500);
             }, 'image/png');
 
         } else {

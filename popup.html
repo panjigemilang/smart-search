@@ -12,15 +12,17 @@
       <h1>Smart Search</h1>
     </header>
     
-    <main>
+    <main>  
       <div class="scan-container">
         <button id="scan-btn" class="scan-btn">
           <div class="scan-ring"></div>
           <span class="scan-icon">⤧</span>
         </button>
         <p class="status-text">Tap to Scan Area</p>
-      </div>
-
+      </div>    
+      <p id="yandex-hint" class="hint-text" style="display: none; color: #fbbf24; border-color: rgba(251, 191, 36, 0.2);">
+        <span style="font-size: 16px;">⚠️</span> <b>Note:</b> After scanning, press <b>Ctrl + V</b> in the new Yandex tab to paste the image.
+      </p>
       <div class="settings">
         <div class="setting-row">
           <span class="label">Google Images</span>
@@ -36,8 +38,7 @@
             <span class="slider"></span>
           </label>
         </div>
-      </div>
-      
+      </div>      
       <p class="shortcut-hint">
         Shortcut: <b>Alt + S</b> to scan instantly
       </p>
