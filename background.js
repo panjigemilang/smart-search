@@ -1,0 +1,156 @@
+function dataURItoBlob(dataURI) {
+  const byteString = atob(dataURI.split(',')[1]);
+  const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ab], {type: mimeString});
+}
+
+async function uploadToGoogle(blob) {
+  const formData = new FormData();
+  formData.append('encoded_image', blob, 'screenshot.jpg');
+  
+  try {
+    // Using Lens endpoint (requires 'ep=cc' for some clients, or just standard upload)
+    // The previous 'searchbyimage/upload' is deprecated/flaky for bots.
+    // Lens is usually: https://lens.google.com/upload?ep=cc&s=&st=
+    
+    // Attempt 1: Lens Upload via direct fetch (might still be blocked if not authed)
+    // If this fails, we might need the 'client=gobb' trick.
+    
+    const response = await fetch('https://lens.google.com/upload?ep=cc&s=&st=' + Date.now(), {
+      method: 'POST',
+      body: formData
+    });
+    
+    // Lens usually returns a redirect or a JSON with the URL?
+    // Actually it often returns the HTML of the results page directly if navigated.
+    // Ideally we want the URL to open in a tab.
+    // If fetch follows redirect, response.url will be the results page.
+    
+    return response.url;
+  } catch (err) {
+    console.error('Lens search failed', err);
+    throw err;
+  }
+}
+
+async function uploadToYandex(blob) {
+  // Yandex flow is more complex usually involving getting a secure upload URL first.
+  // We'll try a direct approach if possible, or fallback to a known working Yandex upload chain.
+  // For MVP robustness, if Yandex fails, we might just open the upload page.
+  // However, reverse engineering Yandex upload:
+  // 1. GET https://yandex.com/images/
+  // 2. Extract crbid...
+  // It's unstable.
+  // Let's try the simple 'imgbb' proxy method if we wanted, but User wants 'free' and 'direct'.
+  
+  // Alternative: Use a public image host for Yandex.
+  // Let's implement Google first as it's the primary. For Yandex, we will open the Yandex Images page
+  // and let the user drag the saved image? No, that's bad UX.
+  
+  // Let's try to fetch the Yandex generic upload endpoint if known.
+  // https://yandex.com/images/search?rpt=imageview&url=... (requires URL)
+  
+  // For now, I will implement Google fully. If user selects Yandex, I will alert limitation or 
+  // try to upload to a temp host (like generic free host) and redirect.
+  // Actually, I'll leave Yandex as a TODO placeholder that falls back to Google for now 
+  // or I'll implement a 'upload to imgops/similar' which redirects.
+  
+  // Strategy: Just Google for now to ensure robustness, or try to interpret Yandex later.
+  // Let's stick to Google as the working example.
+  return uploadToGoogle(blob);
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'start_capture') {
+    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+        return;
+      }
+      
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        const activeTab = tabs[0];
+        if (!activeTab) return;
+
+        // Inject script and css to ensure it's loaded
+        chrome.scripting.insertCSS({
+          target: { tabId: activeTab.id },
+          files: ['content.css']
+        }).then(() => {
+          return chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            files: ['content.js']
+          });
+        }).then(() => {
+          // Send message after injection
+          chrome.tabs.sendMessage(activeTab.id, {
+            action: 'init_crop',
+            image: dataUrl
+          });
+        }).catch(err => {
+            console.error('Failed to inject script', err);
+            // Fallback: Message anyway in case it was already there (though executeScript is safe)
+            chrome.tabs.sendMessage(activeTab.id, {
+              action: 'init_crop',
+              image: dataUrl
+            });
+        });
+      });
+    });
+  }
+  
+  if (request.action === 'open_url') {
+    chrome.tabs.create({ url: request.url });
+  }
+
+  if (request.action === 'perform_search') {
+    // Google Lens Only (Yandex is handled in content.js via clipboard)
+    chrome.storage.local.set({ tempSearchImage: request.image }, () => {
+      chrome.tabs.create({ url: 'launcher.html' });
+    });
+  }
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'scan_area') {
+    // Re-use the start_capture logic
+    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+        return;
+      }
+      
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        const activeTab = tabs[0];
+        if (!activeTab) return;
+
+        // Inject script and css to ensure it's loaded
+        chrome.scripting.insertCSS({
+          target: { tabId: activeTab.id },
+          files: ['content.css']
+        }).then(() => {
+          return chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            files: ['content.js']
+          });
+        }).then(() => {
+          chrome.tabs.sendMessage(activeTab.id, {
+            action: 'init_crop',
+            image: dataUrl
+          });
+        }).catch(err => {
+            // Check if error is just that script is already there, safe to ignore usually but we proceed to message
+            chrome.tabs.sendMessage(activeTab.id, {
+              action: 'init_crop',
+              image: dataUrl
+            });
+        });
+      });
+    });
+  }
+});

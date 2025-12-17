@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Search Image",
+  "version": "1.0",
+  "description": "Search by screenshotting and cropping images on screen.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Smart Search Image",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://www.google.com/*",
+    "https://yandex.com/*"
+  ],
+  "commands": {
+    "scan_area": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "Start Scan Area"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content.css", "icons/icon128.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
