@@ -65,43 +65,67 @@ async function uploadToYandex(blob) {
   return uploadToGoogle(blob);
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'start_capture') {
-    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
-      if (chrome.runtime.lastError) {
-        console.error(chrome.runtime.lastError);
-        return;
-      }
-      
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        const activeTab = tabs[0];
-        if (!activeTab) return;
+async function startCaptureFlow() {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs[0];
+    if (!activeTab || !activeTab.id) return;
 
-        // Inject script and css to ensure it's loaded
-        chrome.scripting.insertCSS({
-          target: { tabId: activeTab.id },
-          files: ['content.css']
-        }).then(() => {
-          return chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            files: ['content.js']
-          });
-        }).then(() => {
-          // Send message after injection
-          chrome.tabs.sendMessage(activeTab.id, {
-            action: 'init_crop',
-            image: dataUrl
-          });
-        }).catch(err => {
-            console.error('Failed to inject script', err);
-            // Fallback: Message anyway in case it was already there (though executeScript is safe)
-            chrome.tabs.sendMessage(activeTab.id, {
-              action: 'init_crop',
-              image: dataUrl
-            });
-        });
+    // Guard against restricted browser system URLs where content scripts are forbidden
+    if (activeTab.url && (
+      activeTab.url.startsWith('chrome://') ||
+      activeTab.url.startsWith('chrome-extension://') ||
+      activeTab.url.startsWith('edge://') ||
+      activeTab.url.startsWith('about:') ||
+      activeTab.url.includes('chrome.google.com/webstore')
+    )) {
+      console.warn('Smart Search cannot run on restricted system pages:', activeTab.url);
+      return;
+    }
+
+    const dataUrl = await new Promise((resolve) => {
+      chrome.tabs.captureVisibleTab(null, { format: 'png' }, (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('Screen capture error:', chrome.runtime.lastError.message);
+          return resolve(null);
+        }
+        resolve(result);
       });
     });
+
+    if (!dataUrl) return;
+
+    // Inject CSS and script cleanly
+    try {
+      await chrome.scripting.insertCSS({
+        target: { tabId: activeTab.id },
+        files: ['content.css']
+      });
+      await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        files: ['content.js']
+      });
+    } catch (injectErr) {
+      console.warn('Script injection skipped or failed:', injectErr);
+    }
+
+    // Safely send message with error handling for connection rejections
+    try {
+      await chrome.tabs.sendMessage(activeTab.id, {
+        action: 'init_crop',
+        image: dataUrl
+      });
+    } catch (msgErr) {
+      console.warn('Could not send init_crop to active tab:', msgErr);
+    }
+  } catch (err) {
+    console.error('Error during screen capture flow:', err);
+  }
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'start_capture') {
+    startCaptureFlow();
   }
   
   if (request.action === 'open_url') {
@@ -109,8 +133,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'perform_search') {
-    // Google Lens Only (Yandex is handled in content.js via clipboard)
-    chrome.storage.local.set({ tempSearchImage: request.image }, () => {
+    chrome.storage.local.set({ tempSearchImage: request.image, searchMode: 'search' }, () => {
+      chrome.tabs.create({ url: 'launcher.html' });
+    });
+  }
+
+  if (request.action === 'perform_translate') {
+    chrome.storage.local.set({ tempSearchImage: request.image, searchMode: 'translate' }, () => {
       chrome.tabs.create({ url: 'launcher.html' });
     });
   }
@@ -118,39 +147,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === 'scan_area') {
-    // Re-use the start_capture logic
-    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
-      if (chrome.runtime.lastError) {
-        console.error(chrome.runtime.lastError);
-        return;
-      }
-      
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        const activeTab = tabs[0];
-        if (!activeTab) return;
-
-        // Inject script and css to ensure it's loaded
-        chrome.scripting.insertCSS({
-          target: { tabId: activeTab.id },
-          files: ['content.css']
-        }).then(() => {
-          return chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            files: ['content.js']
-          });
-        }).then(() => {
-          chrome.tabs.sendMessage(activeTab.id, {
-            action: 'init_crop',
-            image: dataUrl
-          });
-        }).catch(err => {
-            // Check if error is just that script is already there, safe to ignore usually but we proceed to message
-            chrome.tabs.sendMessage(activeTab.id, {
-              action: 'init_crop',
-              image: dataUrl
-            });
-        });
-      });
-    });
+    startCaptureFlow();
   }
 });

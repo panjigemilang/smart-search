@@ -10,7 +10,7 @@ function dataURItoBlob(dataURI) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.local.get(['tempSearchImage', 'searchEngine'], (data) => {
+  chrome.storage.local.get(['tempSearchImage', 'searchEngine', 'searchMode'], (data) => {
     if (!data.tempSearchImage) {
       document.body.innerHTML = '<h2>Error: No image info found.</h2>';
       return;
@@ -27,9 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
     form.enctype = 'multipart/form-data';
     form.style.display = 'none';
 
+    const isTranslate = data.searchMode === 'translate';
+
     // Different endpoints based on engine
     if (data.searchEngine === 'yandex') {
-        form.action = 'https://yandex.com/images/search?rpt=imageview';
+        form.action = isTranslate ? 'https://translate.yandex.com/ocr' : 'https://yandex.com/images/search?rpt=imageview';
         // Yandex expects the file input name to be 'upfile'
         const input = document.createElement('input');
         input.type = 'file';
@@ -37,8 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
         input.files = fileList;
         form.appendChild(input);
     } else {
-        // Default Google Lens
-        form.action = 'https://lens.google.com/upload?ep=cc&s=&st=' + Date.now();
+        // Default Google Lens (ep=tr for translate, ep=cc for general visual search)
+        const ep = isTranslate ? 'tr' : 'cc';
+        form.action = `https://lens.google.com/upload?ep=${ep}&s=&st=` + Date.now();
         const input = document.createElement('input');
         input.type = 'file';
         input.name = 'encoded_image'; // Google specific
@@ -49,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(form);
     
     // Clear storage to free memory
-    chrome.storage.local.remove('tempSearchImage');
+    chrome.storage.local.remove(['tempSearchImage', 'searchMode']);
 
     form.submit();
   });
